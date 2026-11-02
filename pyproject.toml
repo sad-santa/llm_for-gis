@@ -1,0 +1,53 @@
+[project]
+name = "local-metadata-extractor"
+version = "0.1.0"
+description = "Локальное извлечение структурированных метаданных из документов и карт"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "accelerate>=1.0",
+    "bitsandbytes>=0.45",
+    "docling>=2.0",
+    "pillow>=10.0",
+    "pydantic>=2.9",
+    "rasterio>=1.4",
+    "rich>=13.0",
+    "torch>=2.7",
+    "torchvision>=0.22",
+    "transformers>=4.57",
+    "typer>=0.15",
+]
+
+[project.scripts]
+metadata-extractor = "local_metadata_extractor.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.9",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [".uv-cache"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+

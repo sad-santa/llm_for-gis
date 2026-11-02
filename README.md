@@ -1,0 +1,148 @@
+# Local Metadata Extractor
+
+Минимальная локальная CLI-программа превращает один документ, таблицу, изображение или
+GeoTIFF в проверенный структурированный JSON. Исходный файл и его содержимое не отправляются
+во внешние API: после первоначального скачивания зависимостей и модели обработка выполняется
+локально.
+
+Поддерживаются `.pdf`, `.doc`, `.docx`, `.xls`, `.xlsx`, `.png`, `.jpg`, `.jpeg`, `.tif` и
+`.tiff`. Для сканированных PDF включён OCR. Поля результата фиксированы; если факт не найден,
+скаляр остаётся `null`, а множественное поле — пустым массивом. Произвольное содержимое
+документа не втискивается в JSON: с `--keep-intermediate` оно сохраняется отдельно как
+`content.md`.
+
+## Что происходит с файлом
+
+```text
+файл
+  → проверка расширения и извлечение на CPU/RAM
+  → Markdown, таблицы, превью и технические метаданные
+  → один prompt локальной Qwen3-VL на GPU
+  → json.loads + Pydantic + детерминированные проверки
+  → *.metadata.json
+```
+
+- `extractors.py` определяет формат и приводит разные источники к `ExtractedContent`.
+  Docling извлекает PDF/DOCX/XLSX в Markdown, Pillow готовит изображения, Rasterio читает
+  GeoTIFF и его CRS. DOC/XLS сначала конвертируются установленным LibreOffice.
+- `schemas.py` содержит только Pydantic-модели. `MetadataFields` — единственное место, где
+  меняется фиксированный набор граф.
+- `model.py` формирует prompt и лениво загружает один экземпляр Qwen3-VL в 4-bit. Импорт
+  пакета сам по себе модель не загружает.
+- `validation.py` снимает случайное Markdown-ограждение, разбирает JSON, запрещает лишние и
+  пропущенные ключи, проверяет год/CRS и не принимает номенклатуру без evidence.
+- `pipeline.py` видимо соединяет шаги и допускает ровно один запрос на исправление структуры.
+- `cli.py` показывает статус, понятную ошибку и путь к результату.
+
+CPU и RAM используются для Docling/OCR, конвертации Office, уменьшения изображений и проверки
+JSON. VRAM нужна только Qwen3-VL; приложение ограничивает GPU примерно 13 GiB, оставляя запас
+Windows. GeoTIFF не загружается целиком ради превью: Rasterio сразу читает уменьшенный массив.
+
+## Установка на Windows
+
+Требуются Python 3.11 или 3.12, [uv](https://docs.astral.sh/uv/), актуальный NVIDIA-драйвер и
+GPU с CUDA. Для `.doc`/`.xls` нужен LibreOffice с `soffice` в `PATH`. OCR Docling по умолчанию
+может скачать собственные модели при первом использовании; для явно выбранного Tesseract его
+нужно установить отдельно.
+
+```powershell
+uv sync
+```
+
+`torch` и `torchvision` закреплены за официальным индексом CUDA 12.8, а не обычным PyPI. Это
+соответствует минимальному требованию для RTX 5070 Ti из технического задания. CPU fallback
+намеренно отсутствует.
+
+Проверьте окружение:
+
+```powershell
+uv run python -c "import torch; print(torch.__version__); print(torch.version.cuda); print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CUDA unavailable')"
+nvidia-smi
+```
+
+Модель `Qwen/Qwen3-VL-8B-Instruct` загружается с Hugging Face только при первом реальном
+запуске. Репозиторий модели занимает много гигабайт; заранее убедитесь, что на диске достаточно
+места. После заполнения локального кэша inference может работать без сети. Если 8B-модель не
+помещается стабильно, передайте `--model Qwen/Qwen3-VL-4B-Instruct`.
+
+## Запуск
+
+```powershell
+uv run metadata-extractor extract "C:\data\report.pdf"
+uv run metadata-extractor extract "C:\data\map.tif" --output-dir "C:\data\result" --keep-intermediate
+```
+
+Опции:
+
+- `--output-dir PATH` — каталог результата; по умолчанию это `output` рядом с источником;
+- `--model MODEL_ID` — 8B или совместимая 4B Qwen3-VL;
+- `--max-pages N` — последняя обрабатываемая страница PDF, по умолчанию 20;
+- `--keep-intermediate` — сохранить `content.md`, JSON технических метаданных, превью и сырой
+  ответ модели в каталоге `<имя>.artifacts`.
+
+Для старых `.doc` и `.xls` программа вызывает LibreOffice в headless-режиме и передаёт Docling
+уже `.docx`/`.xlsx`. Собственный бинарный парсер намеренно не реализован.
+
+## Выходной JSON
+
+Все фиксированные ключи `metadata` присутствуют всегда. Пример сокращать нельзя — ниже именно
+полный минимальный объект:
+
+```json
+{
+  "schema_version": "1.0",
+  "source_file": "report.pdf",
+  "metadata": {
+    "presentation_type_label": null,
+    "data_type_label": null,
+    "subsection_type_label": null,
+    "vid_pi": [],
+    "methods": [],
+    "type_geo_inf": null,
+    "area_label": [],
+    "subsection_area_label": [],
+    "stage_label": null,
+    "stadium_label": null,
+    "nomenclature": [],
+    "scale_ratio": [],
+    "list_crs_authid": null,
+    "region_label": [],
+    "organization_name": [],
+    "ore_zone_label": [],
+    "license_number": [],
+    "year": [],
+    "author_name": []
+  },
+  "evidence": {},
+  "warnings": []
+}
+```
+
+`evidence` связывает заполненное поле с короткой цитатой или техническим фактом. CRS GeoTIFF
+не угадывается моделью: pipeline принудительно переносит подтверждённый Rasterio идентификатор,
+например `EPSG:32653`. Пустые строки и дубли удаляются. Год допустим от 1950 до текущего года.
+
+## Тесты и качество
+
+Тесты никогда не загружают настоящую LLM: pipeline получает маленькую поддельную функцию.
+
+```powershell
+uv run pytest
+uv run ruff check .
+uv run ruff format --check .
+```
+
+## Ограничения MVP
+
+- Обрабатывается один файл за запуск, последовательно и без сервера, БД, S3, QGIS или RAG.
+- Качество OCR зависит от документа и доступного OCR backend Docling.
+- PDF ограничивается первыми `--max-pages`; очень длинный извлечённый Markdown также
+  обрезается с предупреждением.
+- Формулы Excel и макросы не вычисляются.
+- Превью карты помогает визуальному анализу, но точный CRS берётся только из GeoTIFF metadata.
+- Structured output обеспечивается строгим prompt, Pydantic-схемой и одним repair-запросом,
+  а не гарантированным декодером JSON-токенов. После двух неверных ответов сырой текст
+  сохраняется для диагностики.
+- Значения предметных справочников не сверяются с внешней системой; это следующий этап после
+  проверки MVP на реальных файлах.
+
