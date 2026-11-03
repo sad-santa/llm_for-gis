@@ -209,7 +209,7 @@ def _extract_geotiff(path: Path, work_dir: Path, settings: Settings) -> Extracte
                 "bounds": list(dataset.bounds),
                 "transform": list(dataset.transform)[:6],
                 "crs_wkt": dataset.crs.to_wkt() if dataset.crs else None,
-                "list_crs_authid": crs_authid,
+                "crs_authid": crs_authid,
                 "nodata": dataset.nodata,
             }
     except (OSError, ValueError, rasterio.errors.RasterioError) as exc:

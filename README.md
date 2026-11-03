@@ -18,15 +18,18 @@ GeoTIFF в проверенный структурированный JSON. Ис�
   → проверка расширения и извлечение на CPU/RAM
   → Markdown, таблицы, превью и технические метаданные
   → один prompt локальной Qwen3-VL на GPU
-  → json.loads + Pydantic + детерминированные проверки
+  → строковый JSON + Pydantic + детерминированные проверки
+  → при переданных справочниках: названия → backend ID
   → *.metadata.json
 ```
 
 - `extractors.py` определяет формат и приводит разные источники к `ExtractedContent`.
   Docling извлекает PDF/DOCX/XLSX в Markdown, Pillow готовит изображения, Rasterio читает
   GeoTIFF и его CRS. DOC/XLS сначала конвертируются установленным LibreOffice.
-- `schemas.py` содержит только Pydantic-модели. `MetadataFields` — единственное место, где
-  меняется фиксированный набор граф.
+- `schemas.py` содержит строковую LLM-схему `MetadataFields` и числовую API-схему
+  `ApiMetadataFields` с одинаковыми ключами.
+- `reference_resolution.py` точно сопоставляет извлечённые названия со справочниками и создаёт
+  `ApiMetadataResult`; неизвестные значения не отбрасываются и не получают выдуманный ID.
 - `model.py` формирует prompt и лениво загружает один экземпляр Qwen3-VL в 4-bit. Импорт
   пакета сам по себе модель не загружает.
 - `validation.py` снимает случайное Markdown-ограждение, разбирает JSON, запрещает лишние и
@@ -93,25 +96,23 @@ uv run metadata-extractor extract "C:\data\map.tif" --output-dir "C:\data\result
   "schema_version": "1.0",
   "source_file": "report.pdf",
   "metadata": {
-    "presentation_type_label": null,
-    "data_type_label": null,
-    "subsection_type_label": null,
-    "vid_pi": [],
-    "methods": [],
-    "type_geo_inf": null,
-    "area_label": [],
-    "subsection_area_label": [],
-    "stage_label": null,
-    "stadium_label": null,
-    "nomenclature": [],
-    "scale_ratio": [],
-    "list_crs_authid": null,
-    "region_label": [],
-    "organization_name": [],
-    "ore_zone_label": [],
-    "license_number": [],
-    "year": [],
-    "author_name": []
+    "data_subtype_id": null,
+    "presentation_type": null,
+    "geo_info_type_id": null,
+    "mineral_ids": [],
+    "method_ids": [],
+    "study_kind_ids": [],
+    "study_subkind_ids": [],
+    "exploration_stage_ids": [],
+    "nomenclatures": [],
+    "crs_authid": null,
+    "region_ids": [],
+    "org_ids": [],
+    "ore_zone_ids": [],
+    "license_numbers": [],
+    "assign_license_bbox": null,
+    "years": [],
+    "authors": []
   },
   "evidence": {},
   "warnings": []
@@ -121,6 +122,10 @@ uv run metadata-extractor extract "C:\data\map.tif" --output-dir "C:\data\result
 `evidence` связывает заполненное поле с короткой цитатой или техническим фактом. CRS GeoTIFF
 не угадывается моделью: pipeline принудительно переносит подтверждённый Rasterio идентификатор,
 например `EPSG:32653`. Пустые строки и дубли удаляются. Год допустим от 1950 до текущего года.
+
+Без `reference_lookups` pipeline сохраняет справочные значения строками для ручной проверки.
+Если передать `reference_lookups` в `process_file`, та же точка pipeline преобразует их в
+целочисленные ID и проверяет результат через `ApiMetadataFields`.
 
 ## Тесты и качество
 
@@ -143,6 +148,6 @@ uv run ruff format --check .
 - Structured output обеспечивается строгим prompt, Pydantic-схемой и одним repair-запросом,
   а не гарантированным декодером JSON-токенов. После двух неверных ответов сырой текст
   сохраняется для диагностики.
-- Значения предметных справочников не сверяются с внешней системой; это следующий этап после
-  проверки MVP на реальных файлах.
+- Pipeline пока не загружает справочники из внешней системы самостоятельно. Преобразователь
+  принимает уже полученные вызывающей стороной словари `name → id`.
 

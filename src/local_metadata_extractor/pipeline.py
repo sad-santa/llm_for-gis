@@ -10,6 +10,7 @@ from pathlib import Path
 from .config import Settings
 from .extractors import extract_file, temporary_work_dir
 from .model import LocalQwenModel
+from .reference_resolution import ReferenceLookups, to_api_result
 from .schemas import ExtractedContent, MetadataResult
 from .validation import ModelResponseError, parse_model_response
 
@@ -22,8 +23,9 @@ def process_file(
     settings: Settings | None = None,
     keep_intermediate: bool = False,
     model_call: ModelCall | None = None,
+    reference_lookups: ReferenceLookups | None = None,
 ) -> Path:
-    """Извлекает содержимое, вызывает LLM, валидирует и сохраняет JSON."""
+    """Извлекает метаданные и при наличии справочников преобразует названия в ID."""
     settings = settings or Settings()
     source_path = source_path.resolve()
     target_dir = (output_dir or source_path.parent / "output").resolve()
@@ -61,9 +63,12 @@ def process_file(
             _save_intermediate(artifact_dir, content, raw)
             for image_path in content.image_paths:
                 shutil.copy2(image_path, artifact_dir / Path(image_path).name)
+        output_result = (
+            to_api_result(result, reference_lookups) if reference_lookups is not None else result
+        )
         result_path = target_dir / f"{source_path.stem}.metadata.json"
         result_path.write_text(
-            result.model_dump_json(indent=2, exclude_none=False), encoding="utf-8"
+            output_result.model_dump_json(indent=2, exclude_none=False), encoding="utf-8"
         )
         return result_path
 
@@ -71,10 +76,10 @@ def process_file(
 def _merge_extractor_facts(result: MetadataResult, content: ExtractedContent) -> None:
     """Переносит достоверный CRS GeoTIFF и предупреждения экстрактора в ответ."""
     result.source_file = Path(content.source_path).name
-    crs = content.technical_metadata.get("list_crs_authid")
+    crs = content.technical_metadata.get("crs_authid")
     if crs:
-        result.metadata.list_crs_authid = str(crs)
-        result.evidence["list_crs_authid"] = [f"GeoTIFF metadata: {crs}"]
+        result.metadata.crs_authid = str(crs)
+        result.evidence["crs_authid"] = [f"GeoTIFF metadata: {crs}"]
     result.warnings = list(dict.fromkeys([*content.warnings, *result.warnings]))
 
 

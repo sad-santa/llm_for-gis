@@ -13,6 +13,7 @@ from .config import Settings
 from .extractors import ExtractionError, UnsupportedFormatError
 from .model import ModelLoadError
 from .pipeline import process_file
+from .reference_resolution import ReferenceResolutionError
 from .validation import ModelResponseError
 
 app = typer.Typer(help="Локальное извлечение метаданных из документов и карт.")
@@ -55,6 +56,7 @@ def extract(
         ExtractionError,
         ModelLoadError,
         ModelResponseError,
+        ReferenceResolutionError,
     ) as exc:
         error_console.print(f"[red]Ошибка:[/red] {exc}")
         raise typer.Exit(code=1) from exc

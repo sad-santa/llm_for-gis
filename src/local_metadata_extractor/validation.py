@@ -35,22 +35,22 @@ def parse_model_response(raw: str, current_year: int | None = None) -> MetadataR
 def validate_result(result: MetadataResult, current_year: int | None = None) -> MetadataResult:
     """Проверяет диапазон года, CRS и наличие доказательства номенклатуры."""
     upper_year = current_year or datetime.now().year
-    invalid_years = [year for year in result.metadata.year if not 1950 <= year <= upper_year]
+    invalid_years = [year for year in result.metadata.years if not 1950 <= year <= upper_year]
     if invalid_years:
         raise ModelResponseError(
             f"Год должен находиться между 1950 и {upper_year}: {invalid_years}"
         )
 
-    crs = result.metadata.list_crs_authid
+    crs = result.metadata.crs_authid
     if crs and not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]*:[A-Za-z0-9._-]+", crs):
-        result.metadata.list_crs_authid = None
-        result.evidence.pop("list_crs_authid", None)
+        result.metadata.crs_authid = None
+        result.evidence.pop("crs_authid", None)
         result.warnings.append(
             f"CRS '{crs}' отклонён: ожидается подтверждённый идентификатор AUTHORITY:CODE."
         )
 
-    if result.metadata.nomenclature and not result.evidence.get("nomenclature"):
-        result.metadata.nomenclature = []
+    if result.metadata.nomenclatures and not result.evidence.get("nomenclatures"):
+        result.metadata.nomenclatures = []
         result.warnings.append("Номенклатура удалена: модель не привела доказательство.")
 
     missing_evidence: list[str] = []

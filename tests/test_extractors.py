@@ -80,4 +80,4 @@ def test_extract_geotiff_reads_crs(tmp_path: Path) -> None:
     ) as dataset:
         dataset.write(np.arange(12, dtype="uint8").reshape(1, 3, 4))
     content = extract_file(path, tmp_path / "work", Settings())
-    assert content.technical_metadata["list_crs_authid"] == "EPSG:4326"
+    assert content.technical_metadata["crs_authid"] == "EPSG:4326"

@@ -50,41 +50,82 @@ class ExtractedContent(StrictModel):
 
 
 class MetadataFields(StrictModel):
-    """Фиксированные графы метаданных из исходного технического задания."""
+    """Строковые значения, которые извлекает LLM до разрешения справочников."""
 
-    presentation_type_label: str | None = None
-    data_type_label: str | None = None
-    subsection_type_label: str | None = None
-    vid_pi: list[str] = Field(default_factory=list)
-    methods: list[str] = Field(default_factory=list)
-    type_geo_inf: str | None = None
-    area_label: list[str] = Field(default_factory=list)
-    subsection_area_label: list[str] = Field(default_factory=list)
-    stage_label: str | None = None
-    stadium_label: str | None = None
-    nomenclature: list[str] = Field(default_factory=list)
-    scale_ratio: list[str] = Field(default_factory=list)
-    list_crs_authid: str | None = None
-    region_label: list[str] = Field(default_factory=list)
-    organization_name: list[str] = Field(default_factory=list)
-    ore_zone_label: list[str] = Field(default_factory=list)
-    license_number: list[str] = Field(default_factory=list)
-    year: list[int] = Field(default_factory=list)
-    author_name: list[str] = Field(default_factory=list)
+    data_subtype_id: str | None = None
+    presentation_type: str | None = None
+    geo_info_type_id: str | None = None
+    mineral_ids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Виды полезных ископаемых или целевые полезные компоненты, "
+            "упомянутых в документе. Распознавай нормализованные химические обозначения "
+            "элементов независимо от языка исходного названия, например: "
+            "медь/copper/Cu -> Cu; золото/gold/Au -> Au; "
+            "серебро/silver/Ag -> Ag; кобальт/cobalt/Co -> Co. "
+            "Не добавляй концентрации, единицы измерения, поясняющий текст "
+            "и повторяющиеся значения. Если информация отсутствует, "
+            "возвращай пустой список."
+        ),
+        examples=[["Cu", "Au", "Ag", "Co"]],
+    )
+    method_ids: list[str] = Field(default_factory=list)
+    study_kind_ids: list[str] = Field(default_factory=list)
+    study_subkind_ids: list[str] = Field(default_factory=list)
+    exploration_stage_ids: list[str] = Field(default_factory=list)
+    nomenclatures: list[str] = Field(default_factory=list)
+    crs_authid: str | None = None
+    region_ids: list[str] = Field(default_factory=list)
+    org_ids: list[str] = Field(default_factory=list)
+    ore_zone_ids: list[str] = Field(default_factory=list)
+    license_numbers: list[str] = Field(default_factory=list)
+    assign_license_bbox: bool | None = None
+    years: list[int] = Field(
+        default_factory=list,
+        description=( # надо уточнить правило
+        "Год или годы, к которым относится документ. "
+        "Документ или отчет может охватывать несколько лет. "
+        "Возвращай годы целыми числами в диапазоне от 1800 "
+        "до текущего календарного года + 1. "
+        "Не добавляй пояснения и повторяющиеся значения. "
+        "Если год определить невозможно, возвращай пустой список."
+        ),
+        examples=[[2020], [2019, 2020]],
+    )
+    authors: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Авторы или составители документа, карты, схемы либо другого "
+            "геологического материала. Ищи сведения об авторстве в начале "
+            "или в конце документа, в угловом штампе, "
+            "зарамочном оформлении, легенде, под названием и рядом с пометками "
+            "'автор', 'составил', 'автор-составитель', 'author', "
+            "'compiled by' или 'prepared by'. "
+            "Каждого явно указанного автора возвращай отдельной строкой "
+            "в формате 'Фамилия И.О.', например 'Иванов И.И.'. "
+            "Не придумывай автора по названию организации. "
+            "Не добавляй повторяющиеся значения. "
+            "Если авторство явно не указано, возвращай пустой список."
+        ),
+        examples=[
+            ["Иванов И.И."],
+            ["Иванов И.И.", "Петров П.П."],
+        ],
+    )
 
     @field_validator(
-        "vid_pi",
-        "methods",
-        "area_label",
-        "subsection_area_label",
-        "nomenclature",
-        "scale_ratio",
-        "region_label",
-        "organization_name",
-        "ore_zone_label",
-        "license_number",
-        "year",
-        "author_name",
+        "mineral_ids",
+        "method_ids",
+        "study_kind_ids",
+        "study_subkind_ids",
+        "exploration_stage_ids",
+        "nomenclatures",
+        "region_ids",
+        "org_ids",
+        "ore_zone_ids",
+        "license_numbers",
+        "years",
+        "authors",
         mode="before",
     )
     @classmethod
@@ -93,13 +134,10 @@ class MetadataFields(StrictModel):
         return [] if value is None else value
 
     @field_validator(
-        "presentation_type_label",
-        "data_type_label",
-        "subsection_type_label",
-        "type_geo_inf",
-        "stage_label",
-        "stadium_label",
-        "list_crs_authid",
+        "data_subtype_id",
+        "presentation_type",
+        "geo_info_type_id",
+        "crs_authid",
         mode="before",
     )
     @classmethod
@@ -108,18 +146,18 @@ class MetadataFields(StrictModel):
         return _clean_text(value) if isinstance(value, str) or value is None else value
 
     @field_validator(
-        "vid_pi",
-        "methods",
-        "area_label",
-        "subsection_area_label",
-        "nomenclature",
-        "scale_ratio",
-        "region_label",
-        "organization_name",
-        "ore_zone_label",
-        "license_number",
-        "year",
-        "author_name",
+        "mineral_ids",
+        "method_ids",
+        "study_kind_ids",
+        "study_subkind_ids",
+        "exploration_stage_ids",
+        "nomenclatures",
+        "region_ids",
+        "org_ids",
+        "ore_zone_ids",
+        "license_numbers",
+        "years",
+        "authors",
         mode="after",
     )
     @classmethod
@@ -128,8 +166,30 @@ class MetadataFields(StrictModel):
         return _unique_nonempty(value)
 
 
+class ApiMetadataFields(StrictModel):
+    """Атрибуты в типах, которые принимает ``POST /api/uploads``."""
+
+    data_subtype_id: int | None = None
+    presentation_type: str | None = None
+    geo_info_type_id: int | None = None
+    mineral_ids: list[int] = Field(default_factory=list)
+    method_ids: list[int] = Field(default_factory=list)
+    study_kind_ids: list[int] = Field(default_factory=list)
+    study_subkind_ids: list[int] = Field(default_factory=list)
+    exploration_stage_ids: list[int] = Field(default_factory=list)
+    nomenclatures: list[str] = Field(default_factory=list)
+    crs_authid: str | None = None
+    region_ids: list[int] = Field(default_factory=list)
+    org_ids: list[int] = Field(default_factory=list)
+    ore_zone_ids: list[int] = Field(default_factory=list)
+    license_numbers: list[str] = Field(default_factory=list)
+    assign_license_bbox: bool | None = None
+    years: list[int] = Field(default_factory=list)
+    authors: list[str] = Field(default_factory=list)
+
+
 class MetadataResult(StrictModel):
-    """Проверенный итоговый объект, который сохраняется как JSON."""
+    """Проверенный строковый ответ LLM до разрешения справочников."""
 
     schema_version: str = "1.0"
     source_file: str
@@ -179,3 +239,13 @@ class MetadataResult(StrictModel):
         if unknown:
             raise ValueError(f"Неизвестные поля evidence: {', '.join(sorted(unknown))}")
         return {key: _unique_nonempty(items) for key, items in value.items() if items}
+
+
+class ApiMetadataResult(StrictModel):
+    """Итоговый объект с идентификаторами справочников для backend API."""
+
+    schema_version: str = "1.0"
+    source_file: str
+    metadata: ApiMetadataFields
+    evidence: dict[str, list[str]] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
