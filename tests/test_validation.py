@@ -12,7 +12,7 @@ def response(**metadata_updates: object) -> str:
     """Создаёт полный модельный ответ с указанными значениями."""
     metadata = MetadataFields(
         data_type_id="Отчет",
-        data_subtype_id="Геологический отчет",
+        data_subtype_id="Геологический отчет, ТЭД, ТЭО, ТЭС",
     ).model_dump()
     metadata.update(metadata_updates)
     return json.dumps(

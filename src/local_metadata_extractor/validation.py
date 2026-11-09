@@ -8,6 +8,7 @@ from datetime import datetime
 
 from pydantic import ValidationError
 
+from .reference_catalog import DataTypeHierarchyError, canonicalize_data_type_pair
 from .schemas import MetadataResult
 
 
@@ -34,6 +35,16 @@ def parse_model_response(raw: str, current_year: int | None = None) -> MetadataR
 
 def validate_result(result: MetadataResult, current_year: int | None = None) -> MetadataResult:
     """Проверяет диапазон года, CRS и наличие доказательства номенклатуры."""
+    try:
+        data_type, data_subtype = canonicalize_data_type_pair(
+            result.metadata.data_type_id,
+            result.metadata.data_subtype_id,
+        )
+    except DataTypeHierarchyError as exc:
+        raise ModelResponseError(str(exc)) from exc
+    result.metadata.data_type_id = data_type
+    result.metadata.data_subtype_id = data_subtype
+
     upper_year = current_year or datetime.now().year
     invalid_years = [year for year in result.metadata.years if not 1950 <= year <= upper_year]
     if invalid_years:

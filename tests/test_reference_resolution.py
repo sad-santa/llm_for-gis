@@ -15,7 +15,7 @@ def test_reference_names_are_resolved_to_api_ids() -> None:
         source_file="map.pdf",
         metadata=MetadataFields(
             data_type_id="Отчет",
-            data_subtype_id="Геологический отчет",
+            data_subtype_id="Геологический отчет, ТЭД, ТЭО, ТЭС",
             geo_info_type_id="Первичная",
             mineral_ids=["Au", "Cu"],
             method_ids=["Электроразведка"],
@@ -26,7 +26,7 @@ def test_reference_names_are_resolved_to_api_ids() -> None:
     )
     lookups = {
         "data_type_id": {"Отчет": 5},
-        "data_subtype_id": {"Геологический отчет": 10},
+        "data_subtype_id": {"Геологический отчет, ТЭД, ТЭО, ТЭС": 10},
         "geo_info_type_id": {"Первичная": 20},
         "mineral_ids": {"Au": 1, "Cu": 2},
         "method_ids": {"Электроразведка": 3},
@@ -51,7 +51,7 @@ def test_reference_resolution_is_case_and_whitespace_insensitive() -> None:
         source_file="map.pdf",
         metadata=MetadataFields(
             data_type_id="Отчет",
-            data_subtype_id="Геологический отчет",
+            data_subtype_id="Геологический отчет, ТЭД, ТЭО, ТЭС",
             region_ids=["  КАМЧАТСКИЙ   КРАЙ "],
         ),
     )
@@ -60,7 +60,7 @@ def test_reference_resolution_is_case_and_whitespace_insensitive() -> None:
         result,
         {
             "data_type_id": {"Отчет": 5},
-            "data_subtype_id": {"Геологический отчет": 10},
+            "data_subtype_id": {"Геологический отчет, ТЭД, ТЭО, ТЭС": 10},
             "region_ids": {"Камчатский край": 4},
         },
     )
@@ -74,7 +74,7 @@ def test_unknown_reference_name_is_not_silently_dropped() -> None:
         source_file="map.pdf",
         metadata=MetadataFields(
             data_type_id="Отчет",
-            data_subtype_id="Геологический отчет",
+            data_subtype_id="Геологический отчет, ТЭД, ТЭО, ТЭС",
             region_ids=["Неизвестный регион"],
         ),
     )
@@ -84,7 +84,7 @@ def test_unknown_reference_name_is_not_silently_dropped() -> None:
             result,
             {
                 "data_type_id": {"Отчет": 5},
-                "data_subtype_id": {"Геологический отчет": 10},
+                "data_subtype_id": {"Геологический отчет, ТЭД, ТЭО, ТЭС": 10},
                 "region_ids": {"Камчатский край": 4},
             },
         )

@@ -97,6 +97,31 @@ def test_pipeline_passes_business_validation_error_to_repair(tmp_path: Path) -> 
     assert "Год должен находиться между 1950" in calls[1][1]
 
 
+def test_pipeline_repairs_subtype_from_another_parent(tmp_path: Path) -> None:
+    """Несогласованная пара тип–подтип отклоняется внутри repair-цикла."""
+    source = tmp_path / "map.png"
+    Image.new("RGB", (10, 10), "white").save(source)
+    invalid_response = json.loads(valid_response("map.png"))
+    invalid_response["metadata"]["data_subtype_id"] = "Протокол ГКЗ"
+    calls: list[tuple[str | None, str | None]] = []
+
+    def fake_model(
+        content: object,
+        repair: str | None,
+        repair_error: str | None,
+    ) -> str:
+        calls.append((repair, repair_error))
+        if repair is None:
+            return json.dumps(invalid_response, ensure_ascii=False)
+        return valid_response("map.png")
+
+    process_file(source, model_call=fake_model)
+
+    assert calls[1][1] is not None
+    assert "не относится к типу «Карты»" in calls[1][1]
+    assert "Подраздел относится к типу «Протокол»" in calls[1][1]
+
+
 def test_pipeline_switches_to_api_schema_when_lookups_are_provided(tmp_path: Path) -> None:
     """Переданные справочники включают преобразование названий в backend-ID."""
     source = tmp_path / "map.png"

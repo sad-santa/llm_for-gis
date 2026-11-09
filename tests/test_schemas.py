@@ -10,7 +10,7 @@ def full_metadata() -> dict[str, object]:
     """Возвращает минимальные значения всех обязательных ключей схемы."""
     return MetadataFields(
         data_type_id="Отчет",
-        data_subtype_id="Геологический отчет",
+        data_subtype_id="Геологический отчет, ТЭД, ТЭО, ТЭС",
     ).model_dump()
 
 
@@ -64,7 +64,10 @@ def test_data_type_and_subtype_are_required_and_nonempty() -> None:
     with pytest.raises(ValidationError):
         MetadataFields(data_type_id="Отчет")
     with pytest.raises(ValidationError):
-        MetadataFields(data_type_id=" ", data_subtype_id="Геологический отчет")
+        MetadataFields(
+            data_type_id=" ",
+            data_subtype_id="Геологический отчет, ТЭД, ТЭО, ТЭС",
+        )
     with pytest.raises(ValidationError):
         MetadataFields(data_type_id="Отчет", data_subtype_id=None)
 
@@ -92,7 +95,7 @@ def test_metadata_cleans_empty_and_duplicate_values() -> None:
     """Пустые строки удаляются, повторения сохраняются только один раз."""
     metadata = MetadataFields(
         data_type_id="Отчет",
-        data_subtype_id="Геологический отчет",
+        data_subtype_id="Геологический отчет, ТЭД, ТЭО, ТЭС",
         presentation_type="  ",
         authors=["Иванов И.И.", "", " Иванов И.И. "],
     )
