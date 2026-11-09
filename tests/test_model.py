@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from local_metadata_extractor.model import build_image_content, build_prompt
+from local_metadata_extractor.model import SYSTEM_PROMPT, build_image_content, build_prompt
 from local_metadata_extractor.schemas import ExtractedContent
 
 
@@ -52,3 +52,9 @@ def test_initial_prompt_contains_data_type_hierarchy() -> None:
 
     assert "Протокол:\n- Протокол ГКЗ\n- Протокол НТС" in prompt
     assert "Отчет:\n- Баланс\n- Бюллетень геологических материалов" in prompt
+
+
+def test_system_prompt_defines_evidence_as_object_of_string_arrays() -> None:
+    """Системная инструкция не позволяет LLM вернуть evidence обычным массивом."""
+    assert "evidence всегда возвращай JSON-объектом, никогда массивом" in SYSTEM_PROMPT
+    assert '"data_type_id": ["Протокол №111"]' in SYSTEM_PROMPT

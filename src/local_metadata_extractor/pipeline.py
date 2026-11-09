@@ -6,6 +6,7 @@ import json
 import shutil
 from collections.abc import Callable
 from pathlib import Path
+from time import strftime
 from typing import TypeAlias
 
 from .config import Settings
@@ -36,6 +37,7 @@ def process_file(
     with temporary_work_dir() as temp_name:
         temp_dir = Path(temp_name)
         content = extract_file(source_path, temp_dir, settings)
+        print(f"[{strftime('%H:%M:%S')}] Экстрактор завершил извлечение данных.")
         if model_call is None:
             local_model = LocalQwenModel(settings)
 
@@ -56,6 +58,16 @@ def process_file(
         try:
             result = parse_model_response(raw)
         except ModelResponseError as first_error:
+            print(
+                f"[{strftime('%H:%M:%S')}] Первичный ответ не прошёл проверку: "
+                f"{first_error}"
+            )
+            if keep_intermediate:
+                artifact_dir.mkdir(parents=True, exist_ok=True)
+                (artifact_dir / "raw-response-first.txt").write_text(raw, encoding="utf-8")
+                (artifact_dir / "validation-error-first.txt").write_text(
+                    str(first_error), encoding="utf-8"
+                )
             repaired = model_call(content, raw, str(first_error))
             try:
                 result = parse_model_response(repaired)

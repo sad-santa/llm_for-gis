@@ -5,10 +5,11 @@ from __future__ import annotations
 import shutil
 import subprocess
 import tempfile
+from datetime import date, datetime, time
 from pathlib import Path
 from typing import Any
 
-from .config import Settings
+from .config import ExcelExtractor, Settings
 from .schemas import ExtractedContent
 
 SUPPORTED_FORMATS = {
@@ -76,11 +77,20 @@ def extract_file(path: Path, work_dir: Path, settings: Settings) -> ExtractedCon
     work_dir.mkdir(parents=True, exist_ok=True)
     if source_format in {"doc", "xls"}:
         converted = convert_legacy_office(path, work_dir)
-        content = _extract_document(converted, source_format, settings)
+        content = (
+            _extract_excel(converted, source_format, settings)
+            if source_format == "xls"
+            and settings.excel_extractor == ExcelExtractor.OPENPYXL
+            else _extract_document(converted, source_format, settings)
+        )
         content.source_path = str(path)
         content.technical_metadata["converted_to"] = str(converted)
         return content
-    if source_format in {"pdf", "docx", "xlsx"}:
+    if source_format == "xlsx":
+        if settings.excel_extractor == ExcelExtractor.OPENPYXL:
+            return _extract_excel(path, source_format, settings)
+        return _extract_document(path, source_format, settings)
+    if source_format in {"pdf", "docx"}:
         return _extract_document(path, source_format, settings)
     if source_format == "image":
         return _extract_image(path, work_dir, settings)
@@ -88,7 +98,7 @@ def extract_file(path: Path, work_dir: Path, settings: Settings) -> ExtractedCon
 
 
 def _extract_document(path: Path, source_format: str, settings: Settings) -> ExtractedContent:
-    """Преобразует PDF/Word/Excel в Markdown через Docling, включая OCR PDF."""
+    """Преобразует PDF/Word в Markdown через Docling, включая OCR PDF."""
     try:
         from docling.datamodel.base_models import InputFormat
         from docling.datamodel.pipeline_options import PdfPipelineOptions
@@ -116,29 +126,101 @@ def _extract_document(path: Path, source_format: str, settings: Settings) -> Ext
         warnings.append(f"Markdown обрезан до {settings.max_text_chars} символов.")
     if source_format == "pdf":
         warnings.append(f"Для PDF обработаны страницы не далее {settings.max_pages}.")
-    tables = _document_tables(result.document)
     metadata: dict[str, Any] = {"size_bytes": path.stat().st_size}
-    if source_format == "xlsx":
-        metadata["note"] = "Названия листов и таблицы представлены в Markdown Docling."
     return ExtractedContent(
         source_path=str(path),
         source_format=source_format,
         text=markdown,
-        tables=tables,
         technical_metadata=metadata,
         warnings=warnings,
     )
 
 
-def _document_tables(document: Any) -> list[str]:
-    """Экспортирует найденные Docling таблицы без привязки к версии внутреннего API."""
-    tables: list[str] = []
-    for table in getattr(document, "tables", []):
-        try:
-            tables.append(table.export_to_markdown(doc=document))
-        except (AttributeError, TypeError, ValueError):
+def _extract_excel(path: Path, source_format: str, settings: Settings) -> ExtractedContent:
+    """Извлекает компактный текст из первых строк первого листа Excel."""
+    try:
+        from openpyxl import load_workbook
+        from openpyxl.utils.exceptions import InvalidFileException
+    except ImportError as exc:
+        raise ExtractionError("openpyxl не установлен. Выполните uv sync.") from exc
+
+    workbook = None
+    try:
+        workbook = load_workbook(path, read_only=True, data_only=True)
+        if not workbook.worksheets:
+            raise ExtractionError(f"Excel-файл {path.name} не содержит листов.")
+        worksheet = workbook.worksheets[0]
+        sheet_names = workbook.sheetnames
+        selected_sheet = worksheet.title
+        worksheet_max_column = worksheet.max_column or 0
+        max_row = min(worksheet.max_row or 0, settings.max_excel_rows)
+        max_column = min(worksheet_max_column, settings.max_excel_columns)
+        lines = [f"Лист: {selected_sheet}"]
+        for row_number, row in enumerate(
+            worksheet.iter_rows(
+                min_row=1,
+                max_row=max_row,
+                max_col=max_column,
+                values_only=True,
+            ),
+            start=1,
+        ):
+            values = _compact_excel_row(row)
+            if values:
+                lines.append(f"Строка {row_number}: " + " | ".join(values))
+    except ExtractionError:
+        raise
+    except (InvalidFileException, OSError, TypeError, ValueError) as exc:
+        raise ExtractionError(f"Не удалось прочитать Excel-файл {path.name}: {exc}") from exc
+    finally:
+        if workbook is not None:
+            workbook.close()
+
+    warnings = [
+        f"Для Excel обработаны первые {max_row} строк первого листа."
+    ]
+    if len(sheet_names) > 1:
+        warnings.append("Остальные листы Excel не обрабатывались.")
+    if worksheet_max_column > settings.max_excel_columns:
+        warnings.append(
+            f"Excel ограничен первыми {settings.max_excel_columns} столбцами."
+        )
+    text = "\n".join(lines)
+    if len(text) > settings.max_text_chars:
+        cutoff = text.rfind("\n", 0, settings.max_text_chars)
+        text = text[: cutoff if cutoff > 0 else settings.max_text_chars]
+        warnings.append(
+            f"Компактный текст Excel обрезан до {settings.max_text_chars} символов."
+        )
+    return ExtractedContent(
+        source_path=str(path),
+        source_format=source_format,
+        text=text,
+        technical_metadata={
+            "size_bytes": path.stat().st_size,
+            "sheet_names": sheet_names,
+            "selected_sheet": selected_sheet,
+            "extracted_rows": max_row,
+        },
+        warnings=warnings,
+    )
+
+
+def _compact_excel_row(row: tuple[Any, ...]) -> list[str]:
+    """Удаляет пустые и повторяющиеся в одной Excel-строке значения."""
+    values: list[str] = []
+    seen: set[str] = set()
+    for value in row:
+        if value is None:
             continue
-    return tables
+        if isinstance(value, (date, datetime, time)):
+            text = value.isoformat()
+        else:
+            text = " ".join(str(value).split())
+        if text and text not in seen:
+            seen.add(text)
+            values.append(text)
+    return values
 
 
 def _extract_image(path: Path, work_dir: Path, settings: Settings) -> ExtractedContent:

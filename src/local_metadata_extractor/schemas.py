@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 def _clean_text(value: str | None) -> str | None:
@@ -43,7 +43,6 @@ class ExtractedContent(StrictModel):
     source_path: str
     source_format: str
     text: str = ""
-    tables: list[str] = Field(default_factory=list)
     image_paths: list[str] = Field(default_factory=list)
     technical_metadata: dict[str, Any] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
@@ -60,7 +59,6 @@ class MetadataFields(StrictModel):
             "Определи тип по титулу и содержанию и верни точное название из справочника, "
             "а не числовой ID. Поле обязательно и не может быть пустым."
         ),
-        examples=["Отчет", "Протокол", "Первичная геологическая информация", "Карты"],
     )
     data_subtype_id: str = Field(
         min_length=1,
@@ -73,7 +71,6 @@ class MetadataFields(StrictModel):
             "название подтипа из справочника, а не родительский тип и не числовой ID. "
             "Поле обязательно и не может быть пустым."
         ),
-        examples=["Геологический отчет, ТЭД, ТЭО, ТЭС", "Протокол ГКЗ", "Разрез"],
     )
     presentation_type: str | None = Field(
         default=None,
@@ -324,18 +321,23 @@ class MetadataResult(StrictModel):
     schema_version: str = "1.0"
     source_file: str
     metadata: MetadataFields
-    evidence: dict[str, list[str]] = Field(default_factory=dict)
+    evidence: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description=(
+            "Объект доказательств для заполненных полей metadata. "
+            "Каждый ключ — точное имя поля metadata, а каждое значение — "
+            "массив строк с короткими дословными цитатами. evidence должен быть "
+            "JSON-объектом, а не массивом."
+        ),
+        examples=[
+            {
+                "data_type_id": ["Протокол №111"],
+                "data_subtype_id": ["Протокол ГКЗ"],
+                "years": ["за 2011 год"],
+            }
+        ],
+    )
     warnings: list[str] = Field(default_factory=list)
-
-    @model_validator(mode="before")
-    @classmethod
-    def require_all_metadata_keys(cls, value: Any) -> Any:
-        """Требует присутствия каждой фиксированной графы именно в ответе LLM."""
-        if isinstance(value, dict) and isinstance(value.get("metadata"), dict):
-            missing = set(MetadataFields.model_fields) - set(value["metadata"])
-            if missing:
-                raise ValueError(f"Отсутствуют поля metadata: {', '.join(sorted(missing))}")
-        return value
 
     @field_validator("evidence", mode="before")
     @classmethod

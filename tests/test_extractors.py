@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from local_metadata_extractor.config import Settings
+from local_metadata_extractor.config import ExcelExtractor, Settings
 from local_metadata_extractor.extractors import (
     ExtractionError,
     UnsupportedFormatError,
@@ -46,6 +46,39 @@ def test_legacy_office_needs_libreoffice(tmp_path: Path, monkeypatch: pytest.Mon
     monkeypatch.setattr("local_metadata_extractor.extractors.shutil.which", lambda _: None)
     with pytest.raises(ExtractionError, match="LibreOffice"):
         convert_legacy_office(path, tmp_path)
+
+
+def test_extract_excel_compacts_first_sheet_and_limits_rows(tmp_path: Path) -> None:
+    """Excel читается без пустых ячеек, повторов и строк за пределом лимита."""
+    from openpyxl import Workbook
+
+    path = tmp_path / "report.xlsx"
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Протокол"
+    sheet.append(["Заголовок", None, "Заголовок"])
+    sheet.append([None, None, None])
+    sheet.append(["Au", None, "Ag"])
+    sheet.append(["Избаш Ольга, директор"])
+    sheet.append(["Не должно попасть"])
+    workbook.create_sheet("Второй лист")["A1"] = "Не обрабатывается"
+    workbook.save(path)
+    workbook.close()
+
+    content = extract_file(
+        path,
+        tmp_path / "work",
+        Settings(max_excel_rows=4, excel_extractor=ExcelExtractor.OPENPYXL),
+    )
+
+    assert content.text == (
+        "Лист: Протокол\n"
+        "Строка 1: Заголовок\n"
+        "Строка 3: Au | Ag\n"
+        "Строка 4: Избаш Ольга, директор"
+    )
+    assert content.technical_metadata["selected_sheet"] == "Протокол"
+    assert "Остальные листы Excel не обрабатывались." in content.warnings
 
 
 def test_extract_image_creates_small_preview(tmp_path: Path) -> None:

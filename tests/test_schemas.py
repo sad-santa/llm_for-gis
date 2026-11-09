@@ -103,12 +103,18 @@ def test_metadata_cleans_empty_and_duplicate_values() -> None:
     assert metadata.authors == ["Иванов И.И."]
 
 
-def test_result_requires_every_metadata_key() -> None:
-    """Частичный объект модели не маскируется значениями по умолчанию."""
-    with pytest.raises(ValidationError, match="Отсутствуют поля metadata"):
-        MetadataResult.model_validate(
-            {"schema_version": "1.0", "source_file": "x.pdf", "metadata": {"years": []}}
-        )
+def test_result_fills_missing_optional_metadata_fields() -> None:
+    """Для пропущенных необязательных полей Pydantic применяет значения по умолчанию."""
+    result = MetadataResult.model_validate(
+        {
+            "schema_version": "1.0",
+            "source_file": "x.pdf",
+            "metadata": {"data_type_id": "Карты", "data_subtype_id": "Схема"},
+        }
+    )
+
+    assert result.metadata.authors == []
+    assert result.metadata.presentation_type is None
 
 
 def test_result_rejects_extra_fields() -> None:
@@ -135,3 +141,13 @@ def test_result_normalizes_common_llm_nulls_and_evidence_strings() -> None:
 
     assert result.metadata.method_ids == []
     assert result.evidence["years"] == ["Титульная страница: 2024"]
+
+
+def test_evidence_json_schema_explains_required_structure() -> None:
+    """JSON Schema показывает LLM объект с массивами цитат, а не плоский массив."""
+    evidence_schema = MetadataResult.model_json_schema()["properties"]["evidence"]
+
+    assert evidence_schema["type"] == "object"
+    assert evidence_schema["additionalProperties"]["type"] == "array"
+    assert "а не массивом" in evidence_schema["description"]
+    assert evidence_schema["examples"][0]["years"] == ["за 2011 год"]

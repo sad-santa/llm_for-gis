@@ -66,11 +66,16 @@ def test_pipeline_repairs_invalid_json_once(tmp_path: Path) -> None:
         calls.append((repair, repair_error))
         return "broken" if repair is None else valid_response("map.png")
 
-    process_file(source, model_call=fake_model)
+    result_path = process_file(source, keep_intermediate=True, model_call=fake_model)
     assert calls[0] == (None, None)
     assert calls[1][0] == "broken"
     assert calls[1][1] is not None
     assert "Некорректный структурированный ответ" in calls[1][1]
+    artifact_dir = result_path.parent / "map.artifacts"
+    assert (artifact_dir / "raw-response-first.txt").read_text(encoding="utf-8") == "broken"
+    assert "Некорректный структурированный ответ" in (
+        artifact_dir / "validation-error-first.txt"
+    ).read_text(encoding="utf-8")
 
 
 def test_pipeline_passes_business_validation_error_to_repair(tmp_path: Path) -> None:

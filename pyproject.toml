@@ -8,6 +8,7 @@ dependencies = [
     "accelerate>=1.0",
     "bitsandbytes>=0.45",
     "docling>=2.0",
+    "openpyxl>=3.1",
     "pillow>=10.0",
     "pydantic>=2.9",
     "rasterio>=1.4",

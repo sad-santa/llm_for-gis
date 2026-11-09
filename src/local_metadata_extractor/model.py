@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from time import strftime
 from typing import Any
 
 from .config import Settings
@@ -13,6 +14,10 @@ from .schemas import ExtractedContent, MetadataResult
 SYSTEM_PROMPT = """Ты извлекаешь метаданные из геологических документов и карт.
 
 Верни только JSON-объект строго по переданной JSON Schema, без Markdown и пояснений.
+Всегда возвращай все поля metadata, даже если значение отсутствует.
+Для списочных полей возвращай [].
+Для необязательных строковых и логических полей возвращай null.
+Не пропускай ключи.
 
 Используй только факты, прямо указанные или однозначно следующие
 из конкретных данных документа.
@@ -28,14 +33,10 @@ SYSTEM_PROMPT = """Ты извлекаешь метаданные из геол�
 исключая цитируемых исследователей и список литературы.
 
 EVIDENCE:
-Для каждого заполненного поля приводи короткую дословную цитату из исходного текста или изображения.
-Цитата должна точно воспроизводить реально присутствующий фрагмент,
-без пересказа, перефразирования и добавления слов.
-Не пиши пояснения вроде «в документе упоминается» или «из текста следует».
-Цитата должна подтверждать значение напрямую либо служить конкретным основанием
-для его однозначной интерпретации.
-Если точную подтверждающую цитату найти невозможно, не заполняй поле.
-Для технических данных допускаются факты из переданных технических метаданных.
+Каждое заполненное поле подтверждай в evidence короткой дословной цитатой
+или техническим фактом. Для категориального поля допускается цитата,
+являющаяся однозначным основанием классификации.
+Не выдумывай и не перефразируй цитаты. Необязательное поле без подтверждения оставляй пустым.
 
 Имя файла не является доказательством.
 Не угадывай CRS по изображению.
@@ -113,6 +114,7 @@ class LocalQwenModel:
             {"role": "system", "content": [{"type": "text", "text": SYSTEM_PROMPT}]},
             {"role": "user", "content": message_content},
         ]
+        print(f"[{strftime('%H:%M:%S')}] Модель начала обработку входных данных.")
         inputs = self._processor.apply_chat_template(
             messages,
             tokenize=True,
@@ -122,6 +124,7 @@ class LocalQwenModel:
         )
         inputs.pop("token_type_ids", None)
         inputs = inputs.to(self._model.device)
+        print(f"[{strftime('%H:%M:%S')}] Модель начала генерацию ответа.")
         generated = self._model.generate(
             **inputs,
             max_new_tokens=self.settings.max_new_tokens,
@@ -145,7 +148,7 @@ def build_prompt(
     repair_error: str | None = None,
 ) -> str:
     """Создаёт прозрачный prompt из схемы, Markdown и технических метаданных."""
-    schema = json.dumps(MetadataResult.model_json_schema(), ensure_ascii=False, indent=2)
+    schema = json.dumps(MetadataResult.model_json_schema(), ensure_ascii=False, separators=(",", ":"))
     data_type_hierarchy = render_data_type_hierarchy()
     if repair_raw is not None:
         if repair_error is None:
@@ -165,7 +168,6 @@ def build_prompt(
         "source_format": content.source_format,
         "technical_metadata": content.technical_metadata,
         "extractor_warnings": content.warnings,
-        "tables": content.tables,
     }
     return (
         f"JSON Schema результата:\n{schema}\n\n"

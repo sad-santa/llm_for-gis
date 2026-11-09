@@ -9,7 +9,7 @@ import typer
 from rich.console import Console
 from rich.status import Status
 
-from .config import Settings
+from .config import ExcelExtractor, Settings
 from .extractors import ExtractionError, UnsupportedFormatError
 from .model import ModelLoadError
 from .pipeline import process_file
@@ -36,12 +36,20 @@ def extract(
         str, typer.Option("--model", help="Идентификатор локальной модели")
     ] = "Qwen/Qwen3-VL-8B-Instruct",
     max_pages: Annotated[int, typer.Option("--max-pages", min=1, help="Максимум страниц PDF")] = 20,
+    excel_extractor: Annotated[
+        ExcelExtractor,
+        typer.Option("--excel-extractor", help="Экстрактор Excel: docling или openpyxl"),
+    ] = ExcelExtractor.DOCLING,
     keep_intermediate: Annotated[
         bool, typer.Option("--keep-intermediate", help="Сохранить Markdown, превью и сырой ответ")
     ] = False,
 ) -> None:
     """Обрабатывает один файл и записывает проверенный UTF-8 JSON."""
-    settings = Settings(model_id=model, max_pages=max_pages)
+    settings = Settings(
+        model_id=model,
+        max_pages=max_pages,
+        excel_extractor=excel_extractor,
+    )
     try:
         with Status("Извлечение и анализ файла...", console=console):
             result_path = process_file(

@@ -9,7 +9,7 @@ from datetime import datetime
 from pydantic import ValidationError
 
 from .reference_catalog import DataTypeHierarchyError, canonicalize_data_type_pair
-from .schemas import MetadataResult
+from .schemas import MetadataFields, MetadataResult
 
 
 class ModelResponseError(ValueError):
@@ -27,10 +27,30 @@ def parse_model_response(raw: str, current_year: int | None = None) -> MetadataR
     """Разбирает JSON модели, валидирует схему и простые бизнес-правила."""
     try:
         payload = json.loads(strip_markdown_fence(raw))
+        missing_fields = _missing_optional_metadata_fields(payload)
         result = MetadataResult.model_validate(payload)
     except (json.JSONDecodeError, ValidationError) as exc:
         raise ModelResponseError(f"Некорректный структурированный ответ: {exc}") from exc
+    if missing_fields:
+        result.warnings.append(
+            "Модель не вернула необязательные поля metadata; "
+            "применены значения по умолчанию: "
+            + ", ".join(missing_fields)
+        )
     return validate_result(result, current_year=current_year)
+
+
+def _missing_optional_metadata_fields(payload: object) -> list[str]:
+    """Возвращает необязательные поля metadata, которые LLM не включила в JSON."""
+    if not isinstance(payload, dict):
+        return []
+    metadata = payload.get("metadata")
+    if not isinstance(metadata, dict):
+        return []
+    optional_fields = {
+        name for name, field in MetadataFields.model_fields.items() if not field.is_required()
+    }
+    return sorted(optional_fields - set(metadata))
 
 
 def validate_result(result: MetadataResult, current_year: int | None = None) -> MetadataResult:

@@ -36,6 +36,22 @@ def test_markdown_fence_is_removed() -> None:
     assert result.source_file == "report.pdf"
 
 
+def test_missing_optional_metadata_fields_use_defaults_and_add_warning() -> None:
+    """Пропуски LLM не ломают ответ, но остаются видимыми в предупреждениях."""
+    payload = json.loads(response())
+    del payload["metadata"]["authors"]
+    del payload["metadata"]["presentation_type"]
+
+    result = parse_model_response(json.dumps(payload), current_year=2026)
+
+    assert result.metadata.authors == []
+    assert result.metadata.presentation_type is None
+    assert any(
+        "authors, presentation_type" in warning and "значения по умолчанию" in warning
+        for warning in result.warnings
+    )
+
+
 def test_invalid_json_is_rejected() -> None:
     """Синтаксически неверный ответ получает предметную ошибку."""
     with pytest.raises(ModelResponseError):
