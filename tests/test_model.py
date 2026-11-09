@@ -32,6 +32,8 @@ def test_repair_prompt_contains_response_and_validation_error() -> None:
     assert "Причина ошибки:\nГод должен находиться между 1950 и 2026: [1949]" in prompt
     assert 'Предыдущий ошибочный ответ:\n{"metadata": {"years": [1949]}}' in prompt
     assert "Исправь ответ с учётом указанной ошибки" in prompt
+    assert "ОБЯЗАТЕЛЬНАЯ СВЯЗЬ ТИПА И ПОДРАЗДЕЛА" in prompt
+    assert "Карты:\n- План\n- Приложение\n- Разрез\n- Схема" in prompt
 
 
 def test_repair_prompt_requires_validation_error() -> None:
@@ -40,3 +42,13 @@ def test_repair_prompt_requires_validation_error() -> None:
 
     with pytest.raises(ValueError, match="причину ошибки"):
         build_prompt(content, repair_raw="broken")
+
+
+def test_initial_prompt_contains_data_type_hierarchy() -> None:
+    """Первичный prompt показывает модели допустимые родительско-дочерние пары."""
+    content = ExtractedContent(source_path="map.png", source_format="png")
+
+    prompt = build_prompt(content)
+
+    assert "Протокол:\n- Протокол ГКЗ\n- Протокол НТС" in prompt
+    assert "Отчет:\n- Баланс\n- Бюллетень геологических материалов" in prompt
