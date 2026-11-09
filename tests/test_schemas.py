@@ -8,12 +8,16 @@ from local_metadata_extractor.schemas import ApiMetadataFields, MetadataFields, 
 
 def full_metadata() -> dict[str, object]:
     """Возвращает минимальные значения всех обязательных ключей схемы."""
-    return MetadataFields().model_dump()
+    return MetadataFields(
+        data_type_id="Отчет",
+        data_subtype_id="Геологический отчет",
+    ).model_dump()
 
 
 def test_metadata_fields_follow_upload_contract_order() -> None:
     """Поля следуют порядку контракта загрузки из раздела 6.2."""
     expected = [
+        "data_type_id",
         "data_subtype_id",
         "presentation_type",
         "geo_info_type_id",
@@ -41,16 +45,56 @@ def test_extraction_and_api_schemas_use_different_reference_types() -> None:
     extraction = MetadataFields.model_json_schema()["properties"]
     api = ApiMetadataFields.model_json_schema()["properties"]
 
+    assert extraction["data_type_id"]["type"] == "string"
+    assert api["data_type_id"]["type"] == "integer"
     assert extraction["region_ids"]["items"]["type"] == "string"
     assert api["region_ids"]["items"]["type"] == "integer"
     assert extraction["mineral_ids"]["items"]["type"] == "string"
     assert api["mineral_ids"]["items"]["type"] == "integer"
 
 
+def test_data_type_and_subtype_are_required_and_nonempty() -> None:
+    """Родительский тип и подтип нельзя пропустить, обнулить или оставить пустыми."""
+    extraction_schema = MetadataFields.model_json_schema()
+    api_schema = ApiMetadataFields.model_json_schema()
+
+    assert {"data_type_id", "data_subtype_id"} <= set(extraction_schema["required"])
+    assert {"data_type_id", "data_subtype_id"} <= set(api_schema["required"])
+
+    with pytest.raises(ValidationError):
+        MetadataFields(data_type_id="Отчет")
+    with pytest.raises(ValidationError):
+        MetadataFields(data_type_id=" ", data_subtype_id="Геологический отчет")
+    with pytest.raises(ValidationError):
+        MetadataFields(data_type_id="Отчет", data_subtype_id=None)
+
+
+def test_every_extraction_field_has_model_guidance() -> None:
+    """JSON Schema объясняет модели смысл и формат каждого извлекаемого поля."""
+    properties = MetadataFields.model_json_schema()["properties"]
+
+    assert all(property_schema.get("description") for property_schema in properties.values())
+    assert "Родительский тип данных" in properties["data_type_id"]["description"]
+    assert "не числовой ID" in properties["data_subtype_id"]["description"]
+    assert "study_kind_ids" in properties["study_subkind_ids"]["description"]
+    assert "всегда возвращай null" in properties["assign_license_bbox"]["description"]
+
+
+def test_data_type_and_subtype_are_not_hard_coupled_yet() -> None:
+    """Временное родительское поле пока не вводит программную проверку пары тип–подтип."""
+    metadata = MetadataFields(data_type_id="Отчет", data_subtype_id="Разрез")
+
+    assert metadata.data_type_id == "Отчет"
+    assert metadata.data_subtype_id == "Разрез"
+
+
 def test_metadata_cleans_empty_and_duplicate_values() -> None:
     """Пустые строки удаляются, повторения сохраняются только один раз."""
     metadata = MetadataFields(
-        presentation_type="  ", authors=["Иванов И.И.", "", " Иванов И.И. "]
+        data_type_id="Отчет",
+        data_subtype_id="Геологический отчет",
+        presentation_type="  ",
+        authors=["Иванов И.И.", "", " Иванов И.И. "],
     )
     assert metadata.presentation_type is None
     assert metadata.authors == ["Иванов И.И."]

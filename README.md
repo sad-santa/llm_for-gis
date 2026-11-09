@@ -96,7 +96,8 @@ uv run metadata-extractor extract "C:\data\map.tif" --output-dir "C:\data\result
   "schema_version": "1.0",
   "source_file": "report.pdf",
   "metadata": {
-    "data_subtype_id": null,
+    "data_type_id": "Отчет",
+    "data_subtype_id": "Геологический отчет",
     "presentation_type": null,
     "geo_info_type_id": null,
     "mineral_ids": [],
@@ -114,7 +115,10 @@ uv run metadata-extractor extract "C:\data\map.tif" --output-dir "C:\data\result
     "years": [],
     "authors": []
   },
-  "evidence": {},
+  "evidence": {
+    "data_type_id": ["На титульном листе указано: геологический отчет"],
+    "data_subtype_id": ["На титульном листе указано: геологический отчет"]
+  },
   "warnings": []
 }
 ```

@@ -9,14 +9,31 @@ from typing import Any
 from .config import Settings
 from .schemas import ExtractedContent, MetadataResult
 
-SYSTEM_PROMPT = """Ты извлекаешь метаданные из документов и карт.
-Верни только один JSON-объект без Markdown и пояснений, строго по переданной JSON Schema.
-Не придумывай отсутствующие значения: используй null или пустой массив.
-Не путай автора документа с организацией. Имя файла само по себе не является доказательством.
-Не угадывай CRS изображения: используй только переданные технические метаданные.
-Для каждого непустого значения добавь короткую цитату или технический факт в evidence.
+SYSTEM_PROMPT = """Ты извлекаешь метаданные из геологических документов и карт.
+
+Верни только JSON-объект строго по переданной JSON Schema, без Markdown и пояснений.
+
+Используй только факты, прямо указанные или однозначно следующие из конкретных данных документа.
+Допускай определение категории по однозначным фактам документа, даже если её название не указано дословно.
+Значения категориальных полей записывай только в установленных формулировках, без произвольных синонимов.
+Не делай выводов только по тематике, типичным практикам или внешним знаниям.
+При недостаточном подтверждении оставляй поле пустым: null или [].
+
+Не путай упоминание человека, метода или организации с их ролью в документе.
+Авторами считай только авторов самого документа, исключая цитируемых исследователей и список литературы.
+
+EVIDENCE:
+Для каждого заполненного поля приводи короткую дословную цитату из исходного текста или изображения.
+Цитата должна точно воспроизводить реально присутствующий фрагмент, без пересказа, перефразирования и добавления слов.
+Не пиши пояснения вроде «в документе упоминается» или «из текста следует».
+Цитата должна подтверждать значение напрямую либо служить конкретным основанием для его однозначной интерпретации.
+Если точную подтверждающую цитату найти невозможно, не заполняй поле.
+Для технических данных допускаются факты из переданных технических метаданных.
+
+Имя файла не является доказательством.
+Не угадывай CRS по изображению.
 Сохраняй исходное написание имён, лицензий и географических названий.
-Не добавляй поля вне схемы. Множественные значения возвращай массивами, не строкой с ';'.
+Не добавляй поля вне схемы. Множественные значения возвращай массивами.
 """
 
 
@@ -52,6 +69,7 @@ class LocalQwenModel:
             )
         compute_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
         quantization = BitsAndBytesConfig(
+            # load_in_8bit=True,
             load_in_4bit=True,
             bnb_4bit_compute_dtype=compute_dtype,
             bnb_4bit_quant_type="nf4",
@@ -71,10 +89,15 @@ class LocalQwenModel:
                 f"Не удалось загрузить {self.settings.model_id} в доступную память: {exc}"
             ) from exc
 
-    def generate(self, content: ExtractedContent, repair_raw: str | None = None) -> str:
-        """Генерирует JSON либо один раз исправляет формат предыдущего ответа."""
+    def generate(
+        self,
+        content: ExtractedContent,
+        repair_raw: str | None = None,
+        repair_error: str | None = None,
+    ) -> str:
+        """Генерирует JSON либо один раз исправляет отклонённый предыдущий ответ."""
         self._load()
-        prompt = build_prompt(content, repair_raw=repair_raw)
+        prompt = build_prompt(content, repair_raw=repair_raw, repair_error=repair_error)
         message_content: list[dict[str, Any]] = []
         for image_path in content.image_paths:
             message_content.append(build_image_content(image_path))
@@ -109,13 +132,24 @@ def build_image_content(image_path: str) -> dict[str, str]:
     return {"type": "image", "url": str(Path(image_path).resolve())}
 
 
-def build_prompt(content: ExtractedContent, repair_raw: str | None = None) -> str:
+def build_prompt(
+    content: ExtractedContent,
+    repair_raw: str | None = None,
+    repair_error: str | None = None,
+) -> str:
     """Создаёт прозрачный prompt из схемы, Markdown и технических метаданных."""
     schema = json.dumps(MetadataResult.model_json_schema(), ensure_ascii=False, indent=2)
     if repair_raw is not None:
+        if repair_error is None:
+            raise ValueError("Для исправления ответа необходимо передать причину ошибки.")
         return (
-            "Исправь только синтаксис и структуру следующего ответа. Не добавляй новые факты.\n"
-            f"JSON Schema:\n{schema}\n\nОшибочный ответ:\n{repair_raw}"
+            "Предыдущий ответ не прошёл проверку.\n\n"
+            f"Причина ошибки:\n{repair_error}\n\n"
+            "Исправь ответ с учётом указанной ошибки. Не добавляй факты, которых нет "
+            "в исходных данных. Если значение нельзя подтвердить, замени его на null "
+            "или пустой массив. Верни только один JSON-объект без Markdown и пояснений.\n\n"
+            f"JSON Schema:\n{schema}\n\n"
+            f"Предыдущий ошибочный ответ:\n{repair_raw}"
         )
     payload = {
         "source_file": Path(content.source_path).name,

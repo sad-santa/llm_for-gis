@@ -11,6 +11,7 @@ ReferenceValues: TypeAlias = Mapping[str, int]
 ReferenceLookups: TypeAlias = Mapping[str, ReferenceValues]
 
 SCALAR_REFERENCE_FIELDS = (
+    "data_type_id",
     "data_subtype_id",
     "geo_info_type_id",
 )

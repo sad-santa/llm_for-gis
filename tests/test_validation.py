@@ -10,14 +10,20 @@ from local_metadata_extractor.validation import ModelResponseError, parse_model_
 
 def response(**metadata_updates: object) -> str:
     """Создаёт полный модельный ответ с указанными значениями."""
-    metadata = MetadataFields().model_dump()
+    metadata = MetadataFields(
+        data_type_id="Отчет",
+        data_subtype_id="Геологический отчет",
+    ).model_dump()
     metadata.update(metadata_updates)
     return json.dumps(
         {
             "schema_version": "1.0",
             "source_file": "report.pdf",
             "metadata": metadata,
-            "evidence": {},
+            "evidence": {
+                "data_type_id": ["На титульном листе указано: геологический отчет"],
+                "data_subtype_id": ["На титульном листе указано: геологический отчет"],
+            },
             "warnings": [],
         },
         ensure_ascii=False,
@@ -58,7 +64,7 @@ def test_filled_field_requires_evidence() -> None:
 def test_unverified_crs_name_is_removed_instead_of_rejecting_result() -> None:
     """Текстовое название проекции не выдаётся за технический CRS authid."""
     payload = json.loads(response(crs_authid="Gauss-Kruger 1942"))
-    payload["evidence"] = {"crs_authid": ["Подпись на карте"]}
+    payload["evidence"]["crs_authid"] = ["Подпись на карте"]
 
     result = parse_model_response(json.dumps(payload), current_year=2026)
 

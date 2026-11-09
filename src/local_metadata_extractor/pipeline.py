@@ -6,6 +6,7 @@ import json
 import shutil
 from collections.abc import Callable
 from pathlib import Path
+from typing import TypeAlias
 
 from .config import Settings
 from .extractors import extract_file, temporary_work_dir
@@ -14,7 +15,7 @@ from .reference_resolution import ReferenceLookups, to_api_result
 from .schemas import ExtractedContent, MetadataResult
 from .validation import ModelResponseError, parse_model_response
 
-ModelCall = Callable[[ExtractedContent, str | None], str]
+ModelCall: TypeAlias = Callable[[ExtractedContent, str | None, str | None], str]
 
 
 def process_file(
@@ -38,16 +39,24 @@ def process_file(
         if model_call is None:
             local_model = LocalQwenModel(settings)
 
-            def call_local_model(item: ExtractedContent, repair: str | None) -> str:
+            def call_local_model(
+                item: ExtractedContent,
+                repair: str | None,
+                repair_error: str | None,
+            ) -> str:
                 """Передаёт данные единственному экземпляру локальной модели."""
-                return local_model.generate(item, repair_raw=repair)
+                return local_model.generate(
+                    item,
+                    repair_raw=repair,
+                    repair_error=repair_error,
+                )
 
             model_call = call_local_model
-        raw = model_call(content, None)
+        raw = model_call(content, None, None)
         try:
             result = parse_model_response(raw)
         except ModelResponseError as first_error:
-            repaired = model_call(content, raw)
+            repaired = model_call(content, raw, str(first_error))
             try:
                 result = parse_model_response(repaired)
                 raw = repaired

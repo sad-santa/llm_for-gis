@@ -14,6 +14,7 @@ def test_reference_names_are_resolved_to_api_ids() -> None:
     result = MetadataResult(
         source_file="map.pdf",
         metadata=MetadataFields(
+            data_type_id="Отчет",
             data_subtype_id="Геологический отчет",
             geo_info_type_id="Первичная",
             mineral_ids=["Au", "Cu"],
@@ -24,6 +25,7 @@ def test_reference_names_are_resolved_to_api_ids() -> None:
         ),
     )
     lookups = {
+        "data_type_id": {"Отчет": 5},
         "data_subtype_id": {"Геологический отчет": 10},
         "geo_info_type_id": {"Первичная": 20},
         "mineral_ids": {"Au": 1, "Cu": 2},
@@ -33,6 +35,7 @@ def test_reference_names_are_resolved_to_api_ids() -> None:
 
     api_result = to_api_result(result, lookups)
 
+    assert api_result.metadata.data_type_id == 5
     assert api_result.metadata.data_subtype_id == 10
     assert api_result.metadata.geo_info_type_id == 20
     assert api_result.metadata.mineral_ids == [1, 2]
@@ -46,10 +49,21 @@ def test_reference_resolution_is_case_and_whitespace_insensitive() -> None:
     """Точное сопоставление допускает различия регистра и лишние пробелы."""
     result = MetadataResult(
         source_file="map.pdf",
-        metadata=MetadataFields(region_ids=["  КАМЧАТСКИЙ   КРАЙ "]),
+        metadata=MetadataFields(
+            data_type_id="Отчет",
+            data_subtype_id="Геологический отчет",
+            region_ids=["  КАМЧАТСКИЙ   КРАЙ "],
+        ),
     )
 
-    api_result = to_api_result(result, {"region_ids": {"Камчатский край": 4}})
+    api_result = to_api_result(
+        result,
+        {
+            "data_type_id": {"Отчет": 5},
+            "data_subtype_id": {"Геологический отчет": 10},
+            "region_ids": {"Камчатский край": 4},
+        },
+    )
 
     assert api_result.metadata.region_ids == [4]
 
@@ -58,8 +72,19 @@ def test_unknown_reference_name_is_not_silently_dropped() -> None:
     """Неизвестное название вызывает ошибку вместо придуманного ID."""
     result = MetadataResult(
         source_file="map.pdf",
-        metadata=MetadataFields(region_ids=["Неизвестный регион"]),
+        metadata=MetadataFields(
+            data_type_id="Отчет",
+            data_subtype_id="Геологический отчет",
+            region_ids=["Неизвестный регион"],
+        ),
     )
 
     with pytest.raises(ReferenceResolutionError, match="отсутствует в справочнике"):
-        to_api_result(result, {"region_ids": {"Камчатский край": 4}})
+        to_api_result(
+            result,
+            {
+                "data_type_id": {"Отчет": 5},
+                "data_subtype_id": {"Геологический отчет": 10},
+                "region_ids": {"Камчатский край": 4},
+            },
+        )
